@@ -1,5 +1,6 @@
 const { response } = require("express");
 const MaterialModel = require("../models/Materiales");
+const History = require("../models/Record");
 
 const materiales =  ((req, res)=>{
     MaterialModel.find()
@@ -57,6 +58,10 @@ const addMaterial =  ((req, res)=>{
     });
     material.save()
     .then(material =>{
+        const historial = History({
+            material:material
+        })
+        historial.save();
         res.status(200).json({ message: "Material registrado",material,status:true })
     })
     .catch(err =>{
@@ -88,8 +93,16 @@ const UpdateMaterial =  (async(req, res)=>{
         }
         Object.assign(material, updateMaterial);
         material.entradas.push(nuevaEntrada);
-
+        
         material = await material.save();
+
+        const historial = await History.findOneAndUpdate(
+            { "material._id": material._id },
+            {
+                material
+            },
+            { new: true, upsert: true }
+        );
         return res.status(200).json({ message: "Material actualizado con éxito", material,status:true });
         
     } catch (error) {
@@ -132,8 +145,27 @@ const AddMaterialSalida = (async (req, res)=>{
             Object.assign(ultimaEntrada, entradaUpdate);
             ultimaEntrada.salidas = ultimaEntrada.salidas || [];
             ultimaEntrada.salidas.push(salida);
-            material = await material.save(); 
-            res.status(200).json({ message: "Salida registrada",status:true });
+            if(material.saldo<=0){
+                await MaterialModel.findByIdAndDelete(ID);
+                const historial = await History.findOneAndUpdate(
+                    { "material._id": material._id },
+                    {
+                        material
+                    },
+                    { new: true, upsert: true }
+                );
+                res.status(200).json({ message: "Material eliminado porque el saldo llegó a 0",status:true });
+            }else{
+                material = await material.save(); 
+                const historial = await History.findOneAndUpdate(
+                    { "material._id": material._id },
+                    {
+                        material
+                    },
+                    { new: true, upsert: true }
+                );
+                res.status(200).json({ message: "Salida registrada",status:true });
+            }
         }        
     } catch (error) {
         res.status(500).json({ message: "Error al obtener la última entrada: " + error,status:false });
